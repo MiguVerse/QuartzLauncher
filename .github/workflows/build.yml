@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  workflows: write
 
 jobs:
   patch-and-sync:
@@ -21,6 +22,7 @@ jobs:
         with:
           path: quartzlauncher
           fetch-depth: 0
+          token: ${{ secrets.PAT_TOKEN }}
 
       - name: Checkout PrismLauncher Repository
         uses: actions/checkout@v4
@@ -41,7 +43,7 @@ jobs:
       - name: Replace icon files
         run: |
           mkdir -p prismlauncher/program_info/
-          cp -r quartzlauncher/icons/* prismlauncher/program_info/ || echo "Icons directory may be empty"
+          cp -r quartzlauncher/Icons/* prismlauncher/program_info/ || echo "Icons directory may be empty"
           echo "Icons replaced successfully"
 
       - name: Check patches exist
@@ -98,9 +100,10 @@ jobs:
         if: steps.check-changes.outputs.has-changes == 'true'
         working-directory: prismlauncher
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+
         run: |
-          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
+          git remote set-url origin https://x-access-token:${PAT_TOKEN}@github.com/${{ github.repository }}.git
           git push -u origin quartzlauncher --force
           echo "✅ Pushed to quartzlauncher branch"
 
@@ -108,7 +111,7 @@ jobs:
         id: create-tag
         working-directory: prismlauncher
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           LATEST_TAG=${{ steps.get-tag.outputs.tag }}
           if [ -z "$LATEST_TAG" ]; then
@@ -119,7 +122,7 @@ jobs:
           QUARTZ_TAG="${LATEST_TAG}-quartz"
 
           # Setup remote with authentication
-          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
+          git remote set-url origin https://x-access-token:${PAT_TOKEN}@github.com/${{ github.repository }}.git
 
           # Fetch existing tags from our repo
           git fetch origin refs/tags/$QUARTZ_TAG:refs/tags/$QUARTZ_TAG 2>/dev/null || true
