@@ -149,6 +149,10 @@ jobs:
         run: |
           TAG="${{ steps.prism-tag.outputs.tag }}"
 
+          # Configure Git for tagging
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
           git remote set-url origin https://x-access-token:${PAT_TOKEN}@github.com/${{ github.repository }}.git
 
           # Delete tag locally if it exists (shouldn't happen, but just in case)
