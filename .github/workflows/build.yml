@@ -46,7 +46,7 @@ jobs:
 
       - name: Check patches exist
         run: |
-          if [ -z "$(find ../quartzlauncher/patches -name '*.patch' 2>/dev/null)" ]; then
+          if [ -z "$(find quartzlauncher/patches -name '*.patch' 2>/dev/null)" ]; then
             echo "⚠️  Warning: No patches found in quartzlauncher/patches/"
           else
             echo "✅ Patches found"
