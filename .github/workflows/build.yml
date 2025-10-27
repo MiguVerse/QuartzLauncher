@@ -1,0 +1,148 @@
+name: Patch and Sync
+
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '0 0 * * *'  # Every day at midnight UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-sync:
+    name: Patch PrismLauncher and Push to quartzlauncher Branch
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout QuartzLauncher Repository
+        uses: actions/checkout@v4
+        with:
+          path: quartzlauncher
+          fetch-depth: 0
+
+      - name: Checkout PrismLauncher Repository
+        uses: actions/checkout@v4
+        with:
+          repository: PrismLauncher/PrismLauncher
+          ref: develop
+          path: prismlauncher
+          fetch-depth: 0
+
+      - name: Get latest PrismLauncher tag
+        id: get-tag
+        working-directory: prismlauncher
+        run: |
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          echo "tag=${LATEST_TAG}" >> "$GITHUB_OUTPUT"
+          echo "Latest PrismLauncher tag: ${LATEST_TAG}"
+
+      - name: Replace icon files
+        run: |
+          mkdir -p prismlauncher/program_info/
+          cp -r quartzlauncher/icons/* prismlauncher/program_info/ || echo "Icons directory may be empty"
+          echo "Icons replaced successfully"
+
+      - name: Check patches exist
+        run: |
+          if [ -z "$(find ../quartzlauncher/patches -name '*.patch' 2>/dev/null)" ]; then
+            echo "⚠️  Warning: No patches found in quartzlauncher/patches/"
+          else
+            echo "✅ Patches found"
+          fi
+
+      - name: Apply patches
+        working-directory: prismlauncher
+        run: |
+          FAILED=0
+          for patch in ../quartzlauncher/patches/*.patch; do
+            if [ -f "$patch" ]; then
+              echo "Applying patch: $patch"
+              if ! git apply "$patch"; then
+                echo "❌ Failed to apply patch: $patch"
+                FAILED=1
+              fi
+            fi
+          done
+          if [ $FAILED -eq 1 ]; then
+            echo "❌ One or more patches failed to apply"
+            exit 1
+          fi
+          echo "✅ All patches applied successfully"
+
+      - name: Configure Git
+        working-directory: prismlauncher
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create or update quartzlauncher branch
+        working-directory: prismlauncher
+        id: check-changes
+        run: |
+          git checkout -b quartzlauncher 2>/dev/null || git checkout quartzlauncher
+          git add -A
+          
+          # Check if there are changes
+          if git diff --cached --quiet; then
+            echo "has-changes=false" >> "$GITHUB_OUTPUT"
+            echo "✅ No changes detected"
+          else
+            echo "has-changes=true" >> "$GITHUB_OUTPUT"
+            git commit -m "Apply QuartzLauncher patches and icons"
+            echo "✅ Changes committed"
+          fi
+
+      - name: Push to quartzlauncher branch
+        if: steps.check-changes.outputs.has-changes == 'true'
+        working-directory: prismlauncher
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
+          git push -u origin quartzlauncher --force
+          echo "✅ Pushed to quartzlauncher branch"
+
+      - name: Create tag if it doesn't exist
+        id: create-tag
+        working-directory: prismlauncher
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LATEST_TAG=${{ steps.get-tag.outputs.tag }}
+          if [ -z "$LATEST_TAG" ]; then
+            echo "No tags found in PrismLauncher"
+            exit 0
+          fi
+          
+          QUARTZ_TAG="${LATEST_TAG}-quartz"
+          
+          # Setup remote with authentication
+          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
+          
+          # Fetch existing tags from our repo
+          git fetch origin refs/tags/$QUARTZ_TAG:refs/tags/$QUARTZ_TAG 2>/dev/null || true
+          
+          # Check if tag exists locally
+          if git rev-parse "$QUARTZ_TAG" >/dev/null 2>&1; then
+            echo "tag-status=exists" >> "$GITHUB_OUTPUT"
+            echo "tag-name=$QUARTZ_TAG" >> "$GITHUB_OUTPUT"
+            echo "✅ Tag $QUARTZ_TAG already exists"
+          else
+            git tag -a "$QUARTZ_TAG" -m "QuartzLauncher build based on $LATEST_TAG"
+            git push origin "$QUARTZ_TAG"
+            echo "tag-status=created" >> "$GITHUB_OUTPUT"
+            echo "tag-name=$QUARTZ_TAG" >> "$GITHUB_OUTPUT"
+            echo "✅ Created and pushed tag: $QUARTZ_TAG"
+          fi
+
+      - name: Output summary
+        run: |
+          echo "✅ Workflow Summary:"
+          echo "- Icons replaced in program_info/"
+          echo "- All patches applied"
+          echo "- Pushed to 'quartzlauncher' branch"
+          echo "- Latest PrismLauncher tag: ${{ steps.get-tag.outputs.tag }}"
+          echo "- Tag status: ${{ steps.create-tag.outputs.tag-status }}"
+          echo "- QuartzLauncher tag: ${{ steps.create-tag.outputs.tag-name }}"
