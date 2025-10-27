@@ -1,6 +1,6 @@
 --- a/launcher/ui/pages/global/AccountListPage.cpp
 +++ b/launcher/ui/pages/global/AccountListPage.cpp
-@@ -140,7 +140,7 @@ void AccountListPage::on_actionAddMicrosoft_triggered()
+@@ -142,7 +142,7 @@ void AccountListPage::on_actionAddMicrosoft_triggered()
 
  void AccountListPage::on_actionAddOffline_triggered()
  {
@@ -12,11 +12,13 @@
 
 --- a/launcher/minecraft/auth/MinecraftAccount.h
 +++ b/launcher/minecraft/auth/MinecraftAccount.h
-@@ -113,7 +113,7 @@ class MinecraftAccount : public QObject, public Usable {
-
-     AccountType accountType() const noexcept { return data.type; }
+@@ -77,7 +77,7 @@ struct AccountProfile {
+  */
+ class MinecraftAccount : public QObject, public Usable {
+     Q_OBJECT
+    public: /* construction */
+     //! Do not copy accounts. ever.
+     explicit MinecraftAccount(const MinecraftAccount& other, QObject* parent) = delete;
 
 -    bool ownsMinecraft() const { return data.type != AccountType::Offline && data.minecraftEntitlement.ownsMinecraft; }
 +    bool ownsMinecraft() const { return true; }
-
-     bool hasProfile() const { return data.profileId().size() != 0; }
