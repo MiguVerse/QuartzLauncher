@@ -61,26 +61,57 @@ jobs:
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "📦 Latest PrismLauncher tag: ${TAG}"
 
-      - name: Check if already synced
+      # ==================== Check if Sync Needed ====================
+      - name: Check if sync needed
         id: check
         working-directory: quartzlauncher
+        env:
+          TAG: ${{ steps.prism-tag.outputs.tag }}
         run: |
           set -euo pipefail
 
-          TAG="${{ steps.prism-tag.outputs.tag }}"
-
           if [ -z "$TAG" ]; then
             echo "should-build=false" >> "$GITHUB_OUTPUT"
+            echo "reason=no-tag" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "✅ Already synced - tag $TAG exists"
-            echo "should-build=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "🆕 New release detected: $TAG"
+          echo "🔍 Checking sync status for tag: $TAG"
+
+          # Check if tag exists locally
+          if ! git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "🆕 Tag $TAG doesn't exist - sync needed"
             echo "should-build=true" >> "$GITHUB_OUTPUT"
+            echo "reason=new-tag" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+
+          # Check if quartzlauncher branch exists remotely
+          if ! git ls-remote --exit-code --heads origin quartzlauncher >/dev/null 2>&1; then
+            echo "🆕 Branch quartzlauncher doesn't exist - sync needed"
+            echo "should-build=true" >> "$GITHUB_OUTPUT"
+            echo "reason=no-branch" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Fetch remote branch
+          git fetch origin quartzlauncher:refs/remotes/origin/quartzlauncher
+
+          # Get commit message of remote branch to check synced version
+          REMOTE_COMMIT_MSG=$(git log -1 --pretty=%B origin/quartzlauncher || echo "")
+
+          # Check if the remote branch is synced with this tag
+          if ! echo "$REMOTE_COMMIT_MSG" | grep -q "Sync with PrismLauncher $TAG"; then
+            echo "🔄 Branch exists but not synced with tag $TAG - sync needed"
+            echo "   Remote commit message: $REMOTE_COMMIT_MSG"
+            echo "should-build=true" >> "$GITHUB_OUTPUT"
+            echo "reason=out-of-sync" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "✅ Already synced with PrismLauncher $TAG"
+          echo "should-build=false" >> "$GITHUB_OUTPUT"
+          echo "reason=up-to-date" >> "$GITHUB_OUTPUT"
 
       # ==================== Checkout PrismLauncher ====================
       - name: Checkout PrismLauncher at tag
@@ -164,57 +195,94 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      # ==================== Sync Branch ====================
-      - name: Sync quartzlauncher branch
+      # ==================== Verify Content Changed ====================
+      - name: Check if content actually changed
         if: steps.check.outputs.should-build == 'true'
         working-directory: prismlauncher
-        id: sync
+        id: content-check
         env:
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+          TAG: ${{ steps.prism-tag.outputs.tag }}
         run: |
           set -euo pipefail
 
-          TAG="${{ steps.prism-tag.outputs.tag }}"
+          echo "🔍 Checking if content differs from existing branch..."
 
-          # Set remote URL with token
+          # Set remote URL
           git remote set-url origin "https://x-access-token:${PAT_TOKEN}@github.com/${{ github.repository }}.git"
 
           # Fetch existing branches
           git fetch origin --prune
 
-          # Create or reset branch
+          # Stage all changes (icons + patches)
+          git add -A
+
+          # Create temporary commit to compare tree
+          git commit -m "temp" --allow-empty || true
+          NEW_TREE=$(git rev-parse HEAD^{tree})
+
+          # Check if quartzlauncher branch exists remotely
           if git ls-remote --exit-code --heads origin quartzlauncher >/dev/null 2>&1; then
-            echo "📥 Fetching existing quartzlauncher branch..."
+            echo "📥 Comparing with existing quartzlauncher branch..."
             git fetch origin quartzlauncher:quartzlauncher
             git checkout quartzlauncher
+            OLD_TREE=$(git rev-parse HEAD^{tree})
+
+            # Compare tree hashes (content comparison)
+            if [ "$NEW_TREE" = "$OLD_TREE" ]; then
+              echo "ℹ️  Content is identical to existing branch"
+              echo "has-changes=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            else
+              echo "🔄 Content has changed - sync needed"
+              echo "   Old tree: $OLD_TREE"
+              echo "   New tree: $NEW_TREE"
+            fi
           else
-            echo "🆕 Creating new quartzlauncher branch..."
-            git checkout -b quartzlauncher
+            echo "🆕 Branch doesn't exist yet"
           fi
+
+          echo "has-changes=true" >> "$GITHUB_OUTPUT"
+
+      # ==================== Sync Branch ====================
+      - name: Sync quartzlauncher branch
+        if: steps.check.outputs.should-build == 'true' && steps.content-check.outputs.has-changes == 'true'
+        working-directory: prismlauncher
+        id: sync
+        env:
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+          TAG: ${{ steps.prism-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          echo "🔄 Syncing quartzlauncher branch..."
+
+          # Set remote URL
+          git remote set-url origin "https://x-access-token:${PAT_TOKEN}@github.com/${{ github.repository }}.git"
+
+          # Create or switch to branch
+          git checkout -B quartzlauncher
+
+          # Reset to PrismLauncher tag + our changes
+          git reset --soft $TAG
 
           # Stage all changes
           git add -A
 
-          # Check for changes
-          if git diff --cached --quiet; then
-            echo "has-changes=false" >> "$GITHUB_OUTPUT"
-            echo "ℹ️  No changes detected"
-          else
-            # Commit changes
-            git commit -m "Sync with PrismLauncher $TAG" \
-                       -m "- Applied QuartzLauncher customizations" \
-                       -m "- Custom icons and patches integrated" \
-                       -m "" \
-                       -m "Source: https://github.com/PrismLauncher/PrismLauncher/releases/tag/$TAG"
+          # Commit with proper message
+          git commit -m "Sync with PrismLauncher $TAG" \
+                     -m "- Applied QuartzLauncher customizations" \
+                     -m "- Custom icons and patches integrated" \
+                     -m "" \
+                     -m "Source: https://github.com/PrismLauncher/PrismLauncher/releases/tag/$TAG" \
+                     --allow-empty
 
-            # Use --force-with-lease for safer force push
-            if git push --force-with-lease origin quartzlauncher; then
-              echo "has-changes=true" >> "$GITHUB_OUTPUT"
-              echo "✅ Branch synced and pushed"
-            else
-              echo "❌ Failed to push branch (may have been updated by another process)"
-              exit 1
-            fi
+          # Force push with lease
+          if git push --force-with-lease origin quartzlauncher; then
+            echo "✅ Branch synced and pushed"
+          else
+            echo "⚠️  --force-with-lease failed, using regular force push"
+            git push -f origin quartzlauncher
           fi
 
       # ==================== Create Release Tag ====================
@@ -223,19 +291,21 @@ jobs:
         working-directory: prismlauncher
         env:
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+          TAG: ${{ steps.prism-tag.outputs.tag }}
         run: |
           set -euo pipefail
 
-          TAG="${{ steps.prism-tag.outputs.tag }}"
-
-          # Ensure remote is set
+          # Set remote URL
           git remote set-url origin "https://x-access-token:${PAT_TOKEN}@github.com/${{ github.repository }}.git"
 
           # Check if tag already exists remotely
           if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "⚠️  Tag $TAG already exists remotely"
+            echo "ℹ️  Tag $TAG already exists remotely"
             exit 0
           fi
+
+          # Ensure we're on quartzlauncher branch
+          git checkout quartzlauncher 2>/dev/null || git checkout -b quartzlauncher
 
           # Delete local tag if exists
           git tag -d "$TAG" 2>/dev/null || true
@@ -260,43 +330,53 @@ jobs:
       # ==================== Summary ====================
       - name: Workflow summary
         if: always()
+        env:
+          TAG: ${{ steps.prism-tag.outputs.tag }}
+          SHOULD_BUILD: ${{ steps.check.outputs.should-build }}
+          REASON: ${{ steps.check.outputs.reason }}
+          HAS_CHANGES: ${{ steps.content-check.outputs.has-changes }}
         run: |
-          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          cat >> $GITHUB_STEP_SUMMARY << EOF
           ### 📊 Sync Summary
 
-          **PrismLauncher Version:** `${{ steps.prism-tag.outputs.tag || 'N/A' }}`
+          **PrismLauncher Version:** \`${TAG:-N/A}\`
+          **Sync Reason:** \`${REASON:-unknown}\`
 
           EOF
 
-          if [ "${{ steps.check.outputs.should-build }}" == "true" ]; then
-            cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          if [ "$SHOULD_BUILD" == "true" ]; then
+            cat >> $GITHUB_STEP_SUMMARY << EOF
           ### ✅ Actions Completed
 
           - 🎨 Custom icons applied
           - 🔧 Patches integrated
-          - 🔄 Synced to `quartzlauncher` branch
-          - 🏷️  Tagged as `${{ steps.prism-tag.outputs.tag }}`
+          - 🔄 Synced to \`quartzlauncher\` branch
+          - 🏷️  Tagged as \`${TAG}\`
 
           EOF
 
-            if [ "${{ steps.sync.outputs.has-changes }}" == "true" ]; then
+            if [ "$HAS_CHANGES" == "true" ]; then
               echo "**Status:** 🟢 New changes committed and pushed" >> $GITHUB_STEP_SUMMARY
+            elif [ "$HAS_CHANGES" == "false" ]; then
+              echo "**Status:** 🟡 No content changes (tag already up-to-date)" >> $GITHUB_STEP_SUMMARY
             else
-              echo "**Status:** 🟡 No code changes (tag-only update)" >> $GITHUB_STEP_SUMMARY
+              echo "**Status:** 🟢 Branch and tag updated" >> $GITHUB_STEP_SUMMARY
             fi
 
-            cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+            cat >> $GITHUB_STEP_SUMMARY << EOF
 
           **Links:**
-          - [PrismLauncher Release](https://github.com/PrismLauncher/PrismLauncher/releases/tag/${{ steps.prism-tag.outputs.tag }})
+          - [PrismLauncher Release](https://github.com/PrismLauncher/PrismLauncher/releases/tag/${TAG})
           - [QuartzLauncher Branch](https://github.com/${{ github.repository }}/tree/quartzlauncher)
-          - [QuartzLauncher Tag](https://github.com/${{ github.repository }}/releases/tag/${{ steps.prism-tag.outputs.tag }})
+          - [QuartzLauncher Tag](https://github.com/${{ github.repository }}/releases/tag/${TAG})
           EOF
           else
-            cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+            cat >> $GITHUB_STEP_SUMMARY << EOF
           ### ℹ️ No Action Required
 
-          Already up-to-date with PrismLauncher `${{ steps.prism-tag.outputs.tag }}`
+          Already up-to-date with PrismLauncher \`${TAG}\`
+
+          The quartzlauncher branch is already synced with the latest release.
           EOF
           fi
 
