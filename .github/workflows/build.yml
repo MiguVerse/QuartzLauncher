@@ -144,7 +144,44 @@ jobs:
             fi
           done
 
-      - name: Create or update tag if needed
+      - name: Check if tag needs update
+        id: tag-check
+        working-directory: quartzlauncher
+        env:
+          TAG: ${{ steps.prism-tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          echo "🔍 Checking if tag $TAG needs update..."
+
+          # Check if tag exists
+          if ! git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "🆕 Tag doesn't exist"
+            echo "needs-update=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Tag exists, get its tree hash
+          git fetch origin --tags
+          OLD_TREE=$(git rev-parse "refs/tags/$TAG^{tree}" 2>/dev/null || echo "")
+
+          # Get new tree from prismlauncher-tag
+          cd ../prismlauncher-tag
+          git add -A
+          NEW_TREE=$(git write-tree)
+
+          if [ "$NEW_TREE" = "$OLD_TREE" ] && [ -n "$OLD_TREE" ]; then
+            echo "✅ Tag content unchanged"
+            echo "needs-update=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "🔄 Tag content changed"
+            echo "   Old: ${OLD_TREE:-none}"
+            echo "   New: $NEW_TREE"
+            echo "needs-update=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create or update tag
+        if: steps.tag-check.outputs.needs-update == 'true'
         working-directory: prismlauncher-tag
         env:
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
@@ -156,28 +193,12 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git remote set-url origin "https://x-access-token:${PAT_TOKEN}@github.com/${{ github.repository }}.git"
 
-          git fetch origin --prune --tags
-          git add -A
-          NEW_TREE=$(git write-tree)
-
-          # Check if tag update needed
-          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            # Fetch remote tag for comparison (force to overwrite local)
-            git fetch origin --force "refs/tags/$TAG:refs/tags/remote-$TAG"
-            OLD_TREE=$(git rev-parse "remote-$TAG^{tree}" 2>/dev/null || echo "")
-
-            if [ "$NEW_TREE" = "$OLD_TREE" ]; then
-              echo "✅ Tag up-to-date"
-              exit 0
-            fi
-
-            # Delete old tag
-            echo "🗑️  Deleting old tag..."
-            git push origin ":refs/tags/$TAG" 2>/dev/null || true
-          fi
+          # Delete old tag if exists
+          git push origin ":refs/tags/$TAG" 2>/dev/null || true
 
           # Create tag
           echo "🏷️  Creating tag $TAG..."
+          git add -A
           git commit -m "QuartzLauncher $TAG" \
                      -m "Upstream: https://github.com/PrismLauncher/PrismLauncher/releases/tag/$TAG" \
                      --allow-empty
