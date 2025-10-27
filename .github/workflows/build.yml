@@ -2,9 +2,9 @@ name: Patch and Sync
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   schedule:
-    - cron: '0 0 * * *'  # Every day at midnight UTC
+    - cron: '0 0 * * *' # Every day at midnight UTC
   workflow_dispatch:
 
 permissions:
@@ -14,7 +14,7 @@ jobs:
   patch-and-sync:
     name: Patch PrismLauncher and Push to quartzlauncher Branch
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout QuartzLauncher Repository
         uses: actions/checkout@v4
@@ -83,7 +83,7 @@ jobs:
         run: |
           git checkout -b quartzlauncher 2>/dev/null || git checkout quartzlauncher
           git add -A
-          
+
           # Check if there are changes
           if git diff --cached --quiet; then
             echo "has-changes=false" >> "$GITHUB_OUTPUT"
@@ -115,15 +115,15 @@ jobs:
             echo "No tags found in PrismLauncher"
             exit 0
           fi
-          
+
           QUARTZ_TAG="${LATEST_TAG}-quartz"
-          
+
           # Setup remote with authentication
           git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
-          
+
           # Fetch existing tags from our repo
           git fetch origin refs/tags/$QUARTZ_TAG:refs/tags/$QUARTZ_TAG 2>/dev/null || true
-          
+
           # Check if tag exists locally
           if git rev-parse "$QUARTZ_TAG" >/dev/null 2>&1; then
             echo "tag-status=exists" >> "$GITHUB_OUTPUT"
