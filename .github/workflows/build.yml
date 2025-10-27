@@ -132,7 +132,7 @@ jobs:
             [ "$(ls -A ../quartzlauncher/Icons 2>/dev/null)" ] && \
             cp -rv ../quartzlauncher/Icons/* program_info/
 
-          # Apply patches (with proper error handling)
+          # Apply patches
           shopt -s nullglob
           PATCHES=(../quartzlauncher/patches/*.patch)
 
@@ -162,11 +162,17 @@ jobs:
 
           # Check if tag update needed
           if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
-            OLD_TREE=$(git rev-parse "$TAG^{tree}" 2>/dev/null || echo "")
-            [ "$NEW_TREE" = "$OLD_TREE" ] && { echo "✅ Tag up-to-date"; exit 0; }
+            # Fetch remote tag for comparison (force to overwrite local)
+            git fetch origin --force "refs/tags/$TAG:refs/tags/remote-$TAG"
+            OLD_TREE=$(git rev-parse "remote-$TAG^{tree}" 2>/dev/null || echo "")
+
+            if [ "$NEW_TREE" = "$OLD_TREE" ]; then
+              echo "✅ Tag up-to-date"
+              exit 0
+            fi
 
             # Delete old tag
+            echo "🗑️  Deleting old tag..."
             git push origin ":refs/tags/$TAG" 2>/dev/null || true
           fi
 
