@@ -1,5 +1,3 @@
-diff --git a/launcher/minecraft/auth/MinecraftAccount.h b/launcher/minecraft/auth/MinecraftAccount.h
-index a82d3f134..0d9aff8a4 100644
 --- a/launcher/minecraft/auth/MinecraftAccount.h
 +++ b/launcher/minecraft/auth/MinecraftAccount.h
 @@ -116,7 +116,7 @@ class MinecraftAccount : public QObject, public Usable {
@@ -11,8 +9,6 @@ index a82d3f134..0d9aff8a4 100644
 
      bool hasProfile() const { return data.profileId().size() != 0; }
 
-diff --git a/launcher/ui/pages/global/AccountListPage.cpp b/launcher/ui/pages/global/AccountListPage.cpp
-index 041b8faff..4631a2588 100644
 --- a/launcher/ui/pages/global/AccountListPage.cpp
 +++ b/launcher/ui/pages/global/AccountListPage.cpp
 @@ -141,7 +141,7 @@ void AccountListPage::on_actionAddMicrosoft_triggered()
