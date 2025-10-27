@@ -1,6 +1,21 @@
+diff --git a/launcher/minecraft/auth/MinecraftAccount.h b/launcher/minecraft/auth/MinecraftAccount.h
+index a82d3f134..0d9aff8a4 100644
+--- a/launcher/minecraft/auth/MinecraftAccount.h
++++ b/launcher/minecraft/auth/MinecraftAccount.h
+@@ -116,7 +116,7 @@ class MinecraftAccount : public QObject, public Usable {
+
+     AccountType accountType() const noexcept { return data.type; }
+
+-    bool ownsMinecraft() const { return data.type != AccountType::Offline && data.minecraftEntitlement.ownsMinecraft; }
++    bool ownsMinecraft() const { return true; }
+
+     bool hasProfile() const { return data.profileId().size() != 0; }
+
+diff --git a/launcher/ui/pages/global/AccountListPage.cpp b/launcher/ui/pages/global/AccountListPage.cpp
+index 041b8faff..4631a2588 100644
 --- a/launcher/ui/pages/global/AccountListPage.cpp
 +++ b/launcher/ui/pages/global/AccountListPage.cpp
-@@ -142,7 +142,7 @@ void AccountListPage::on_actionAddMicrosoft_triggered()
+@@ -141,7 +141,7 @@ void AccountListPage::on_actionAddMicrosoft_triggered()
 
  void AccountListPage::on_actionAddOffline_triggered()
  {
@@ -9,16 +24,3 @@
          QMessageBox::warning(this, tr("Error"),
                               tr("You must add a Microsoft account that owns Minecraft before you can add an offline account."
                                  "<br><br>"
-
---- a/launcher/minecraft/auth/MinecraftAccount.h
-+++ b/launcher/minecraft/auth/MinecraftAccount.h
-@@ -77,7 +77,7 @@ struct AccountProfile {
-  */
- class MinecraftAccount : public QObject, public Usable {
-     Q_OBJECT
-    public: /* construction */
-     //! Do not copy accounts. ever.
-     explicit MinecraftAccount(const MinecraftAccount& other, QObject* parent) = delete;
-
--    bool ownsMinecraft() const { return data.type != AccountType::Offline && data.minecraftEntitlement.ownsMinecraft; }
-+    bool ownsMinecraft() const { return true; }
