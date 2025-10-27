@@ -143,7 +143,7 @@ jobs:
       # ==================== Create Release Tag ====================
       - name: Create release tag
         if: steps.check.outputs.should-build == 'true'
-        working-directory: quartzlauncher
+        working-directory: prismlauncher
         env:
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
@@ -158,7 +158,7 @@ jobs:
           # Delete tag locally if it exists (shouldn't happen, but just in case)
           git tag -d "$TAG" 2>/dev/null || true
 
-          # Create and push the new tag
+          # Create and push the new tag on the quartzlauncher branch
           git tag -a "$TAG" -m "QuartzLauncher $TAG" \
                            -m "" \
                            -m "Based on PrismLauncher $TAG with custom patches and branding."
