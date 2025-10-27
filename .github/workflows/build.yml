@@ -193,8 +193,11 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git remote set-url origin "https://x-access-token:${PAT_TOKEN}@github.com/${{ github.repository }}.git"
 
-          # Delete old tag if exists
+          # Delete remote tag first if exists
           git push origin ":refs/tags/$TAG" 2>/dev/null || true
+
+          # Delete local tag (from PrismLauncher checkout)
+          git tag -d "$TAG" 2>/dev/null || true
 
           # Create tag
           echo "🏷️  Creating tag $TAG..."
