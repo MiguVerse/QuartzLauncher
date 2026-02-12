@@ -1,3 +1,5 @@
+# Found [this fork](https://freesmlauncher.org/) that is the same like this but better, this project is abandoned now.
+
 # 💎 QuartzLauncher
 
 **A PrismLauncher fork for offline Minecraft gaming.**
